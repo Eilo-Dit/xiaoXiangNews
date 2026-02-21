@@ -1,6 +1,7 @@
 package com.xxcb.news.data.cache
 
 import android.content.Context
+import android.graphics.Bitmap
 import java.io.File
 import java.net.URL
 import java.security.MessageDigest
@@ -9,6 +10,30 @@ object PdfCache {
 
     private const val PDF_CACHE_DIR = "pdf_cache"
     private const val MAX_CACHE_SIZE_MB = 200L
+
+    // Simple in-memory bitmap cache, cleared when date changes
+    private val bitmapCache = mutableMapOf<String, List<Bitmap>>()
+
+    fun getCachedBitmaps(url: String): List<Bitmap>? {
+        val cached = bitmapCache[url]
+        // Verify bitmaps are still valid (not recycled)
+        if (cached != null && cached.all { !it.isRecycled }) {
+            return cached
+        }
+        bitmapCache.remove(url)
+        return null
+    }
+
+    fun putBitmaps(url: String, bitmaps: List<Bitmap>) {
+        bitmapCache[url] = bitmaps
+    }
+
+    fun clearBitmapCache() {
+        bitmapCache.values.forEach { list ->
+            list.forEach { if (!it.isRecycled) it.recycle() }
+        }
+        bitmapCache.clear()
+    }
 
     private fun getCacheDir(context: Context): File {
         val dir = File(context.cacheDir, PDF_CACHE_DIR)

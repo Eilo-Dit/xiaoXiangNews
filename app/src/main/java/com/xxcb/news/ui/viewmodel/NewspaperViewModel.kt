@@ -1,9 +1,12 @@
 package com.xxcb.news.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.xxcb.news.data.cache.PdfCache
 import com.xxcb.news.data.model.NewspaperPage
 import com.xxcb.news.data.repository.NewspaperRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,7 +23,7 @@ data class NewspaperUiState(
     val error: String? = null
 )
 
-class NewspaperViewModel : ViewModel() {
+class NewspaperViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = NewspaperRepository()
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -47,6 +50,8 @@ class NewspaperViewModel : ViewModel() {
                         currentDate = date,
                         error = null
                     )
+                    // Preload all PDF files to disk cache in background
+                    preloadPdfs(pages)
                 } else {
                     // 当天没有数据，尝试获取最近一期
                     val lastDateResult = repository.getLastDate(date)
@@ -87,6 +92,18 @@ class NewspaperViewModel : ViewModel() {
     }
 
     fun changeDate(date: String) {
+        PdfCache.clearBitmapCache()
         loadNewspaper(date)
+    }
+
+    private fun preloadPdfs(pages: List<NewspaperPage>) {
+        val context = getApplication<Application>()
+        pages.forEach { page ->
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    PdfCache.downloadAndCache(context, page.pdfUrl)
+                } catch (_: Exception) {}
+            }
+        }
     }
 }

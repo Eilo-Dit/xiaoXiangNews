@@ -33,7 +33,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -115,6 +114,7 @@ fun PdfViewerScreen(
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
+                beyondBoundsPageCount = pages.size,
                 key = { pages[it].pdfUrl }
             ) { pageIndex ->
                 SinglePdfPage(
@@ -144,12 +144,17 @@ fun PdfViewerScreen(
 @Composable
 fun SinglePdfPage(pdfUrl: String) {
     val context = LocalContext.current
-    var pdfBitmaps by remember(pdfUrl) { mutableStateOf<List<Bitmap>?>(null) }
-    var isLoading by remember(pdfUrl) { mutableStateOf(true) }
+
+    // Initialize from memory cache synchronously (no loading flash)
+    val cachedBitmaps = remember(pdfUrl) { PdfCache.getCachedBitmaps(pdfUrl) }
+    var pdfBitmaps by remember(pdfUrl) { mutableStateOf(cachedBitmaps) }
+    var isLoading by remember(pdfUrl) { mutableStateOf(cachedBitmaps == null) }
     var errorMessage by remember(pdfUrl) { mutableStateOf<String?>(null) }
 
-    // Download and render PDF
+    // Only download and render if not in memory cache
     LaunchedEffect(pdfUrl) {
+        if (pdfBitmaps != null) return@LaunchedEffect
+
         isLoading = true
         errorMessage = null
         try {
@@ -158,12 +163,14 @@ fun SinglePdfPage(pdfUrl: String) {
                 val fd = ParcelFileDescriptor.open(cacheFile, ParcelFileDescriptor.MODE_READ_ONLY)
                 val renderer = PdfRenderer(fd)
                 val result = mutableListOf<Bitmap>()
+                // Use screen density for appropriate render scale, cap at 2x
+                val density = context.resources.displayMetrics.density
+                val renderScale = density.coerceIn(1.5f, 2f)
                 for (i in 0 until renderer.pageCount) {
                     val page = renderer.openPage(i)
-                    val scale = 2
                     val bitmap = Bitmap.createBitmap(
-                        page.width * scale,
-                        page.height * scale,
+                        (page.width * renderScale).toInt(),
+                        (page.height * renderScale).toInt(),
                         Bitmap.Config.ARGB_8888
                     )
                     bitmap.eraseColor(android.graphics.Color.WHITE)
@@ -175,6 +182,8 @@ fun SinglePdfPage(pdfUrl: String) {
                 fd.close()
                 result
             }
+            // Store in memory cache (cleared on date change)
+            PdfCache.putBitmaps(pdfUrl, bitmaps)
             pdfBitmaps = bitmaps
             isLoading = false
         } catch (e: Exception) {
@@ -183,12 +192,7 @@ fun SinglePdfPage(pdfUrl: String) {
         }
     }
 
-    // Clean up bitmaps when leaving
-    DisposableEffect(pdfUrl) {
-        onDispose {
-            pdfBitmaps?.forEach { it.recycle() }
-        }
-    }
+    // Don't recycle bitmaps on dispose — they're managed by PdfCache's HashMap
 
     Box(
         modifier = Modifier.fillMaxSize(),
