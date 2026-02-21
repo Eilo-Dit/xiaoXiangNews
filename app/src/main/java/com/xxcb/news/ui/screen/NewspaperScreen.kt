@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -177,11 +178,11 @@ fun NewspaperPageCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
-        Column {
+        Box {
             // Newspaper page image
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
@@ -191,39 +192,25 @@ fun NewspaperPageCard(
                 contentDescription = page.edition,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(240.dp),
-                contentScale = ContentScale.Fit
+                    .aspectRatio(0.7f),
+                contentScale = ContentScale.Crop
             )
 
-            // Edition label
+            // Edition label overlay at bottom
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(BluePrimary)
-                    .padding(vertical = 8.dp, horizontal = 12.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(vertical = 5.dp, horizontal = 10.dp)
             ) {
                 Text(
                     text = page.edition,
                     color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            // "View HD" hint
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 6.dp)
-            ) {
-                Text(
-                    text = "点击查看高清版 →",
-                    color = RedPrimary,
-                    fontSize = 12.sp,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
