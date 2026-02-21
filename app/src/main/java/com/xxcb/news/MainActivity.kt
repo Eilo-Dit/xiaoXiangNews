@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -15,8 +17,6 @@ import com.xxcb.news.ui.screen.NewspaperScreen
 import com.xxcb.news.ui.screen.PdfViewerScreen
 import com.xxcb.news.ui.theme.XiaoXiangNewsTheme
 import com.xxcb.news.ui.viewmodel.NewspaperViewModel
-import java.net.URLDecoder
-import java.net.URLEncoder
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,28 +40,23 @@ fun NewspaperApp() {
             NewspaperScreen(
                 viewModel = viewModel,
                 onPageClick = { page ->
-                    val encodedUrl = URLEncoder.encode(page.pdfUrl, "UTF-8")
-                    val encodedTitle = URLEncoder.encode(page.edition, "UTF-8")
-                    navController.navigate("pdf/$encodedUrl/$encodedTitle")
+                    val uiState = viewModel.uiState.value
+                    val index = uiState.pages.indexOf(page).coerceAtLeast(0)
+                    navController.navigate("pdf/$index")
                 }
             )
         }
         composable(
-            route = "pdf/{pdfUrl}/{title}",
+            route = "pdf/{pageIndex}",
             arguments = listOf(
-                navArgument("pdfUrl") { type = NavType.StringType },
-                navArgument("title") { type = NavType.StringType }
+                navArgument("pageIndex") { type = NavType.IntType }
             )
         ) { backStackEntry ->
-            val pdfUrl = URLDecoder.decode(
-                backStackEntry.arguments?.getString("pdfUrl") ?: "", "UTF-8"
-            )
-            val title = URLDecoder.decode(
-                backStackEntry.arguments?.getString("title") ?: "", "UTF-8"
-            )
+            val pageIndex = backStackEntry.arguments?.getInt("pageIndex") ?: 0
+            val uiState by viewModel.uiState.collectAsState()
             PdfViewerScreen(
-                pdfUrl = pdfUrl,
-                title = title,
+                pages = uiState.pages,
+                initialPageIndex = pageIndex,
                 onBack = { navController.popBackStack() }
             )
         }

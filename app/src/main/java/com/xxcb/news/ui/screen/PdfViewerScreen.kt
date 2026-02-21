@@ -3,6 +3,7 @@ package com.xxcb.news.ui.screen
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -18,9 +19,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -50,26 +52,101 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xxcb.news.data.cache.PdfCache
+import com.xxcb.news.data.model.NewspaperPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private val RedPrimary = Color(0xFFE70012)
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun PdfViewerScreen(
-    pdfUrl: String,
-    title: String,
+    pages: List<NewspaperPage>,
+    initialPageIndex: Int,
     onBack: () -> Unit
 ) {
+    val pagerState = rememberPagerState(
+        initialPage = initialPageIndex,
+        pageCount = { pages.size }
+    )
+
+    val currentEdition = if (pages.isNotEmpty()) {
+        pages[pagerState.currentPage].edition
+    } else ""
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Top bar
+        TopAppBar(
+            title = {
+                Text(
+                    text = currentEdition,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = Color.White
+                    )
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = RedPrimary
+            )
+        )
+
+        // Pager content
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .background(Color(0xFF525659))
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                key = { pages[it].pdfUrl }
+            ) { pageIndex ->
+                SinglePdfPage(
+                    pdfUrl = pages[pageIndex].pdfUrl
+                )
+            }
+        }
+
+        // Bottom page indicator
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF333333))
+                .padding(vertical = 10.dp)
+        ) {
+            Text(
+                text = "第${pagerState.currentPage + 1}版 / 共${pages.size}版    ${currentEdition}",
+                color = Color.White.copy(alpha = 0.9f),
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+fun SinglePdfPage(pdfUrl: String) {
     val context = LocalContext.current
-    var pdfBitmaps by remember { mutableStateOf<List<Bitmap>?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var pdfBitmaps by remember(pdfUrl) { mutableStateOf<List<Bitmap>?>(null) }
+    var isLoading by remember(pdfUrl) { mutableStateOf(true) }
+    var errorMessage by remember(pdfUrl) { mutableStateOf<String?>(null) }
 
     // Download and render PDF
     LaunchedEffect(pdfUrl) {
@@ -77,15 +154,12 @@ fun PdfViewerScreen(
         errorMessage = null
         try {
             val bitmaps = withContext(Dispatchers.IO) {
-                // Download PDF (with cache)
                 val cacheFile = PdfCache.downloadAndCache(context, pdfUrl)
-                // Render PDF pages to bitmaps
                 val fd = ParcelFileDescriptor.open(cacheFile, ParcelFileDescriptor.MODE_READ_ONLY)
                 val renderer = PdfRenderer(fd)
                 val result = mutableListOf<Bitmap>()
                 for (i in 0 until renderer.pageCount) {
                     val page = renderer.openPage(i)
-                    // Render at 2x for high quality
                     val scale = 2
                     val bitmap = Bitmap.createBitmap(
                         page.width * scale,
@@ -110,88 +184,51 @@ fun PdfViewerScreen(
     }
 
     // Clean up bitmaps when leaving
-    DisposableEffect(Unit) {
+    DisposableEffect(pdfUrl) {
         onDispose {
             pdfBitmaps?.forEach { it.recycle() }
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Top bar
-        TopAppBar(
-            title = {
-                Text(
-                    text = title,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                        tint = Color.White
-                    )
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = RedPrimary
-            )
-        )
-
-        // Content
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF525659))
-        ) {
-            when {
-                isLoading -> {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CircularProgressIndicator(color = Color.White)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "正在加载高清版...",
-                            color = Color.White,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-                errorMessage != null -> {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            isLoading -> {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = Color.White)
+                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = errorMessage ?: "加载失败",
+                        text = "正在加载高清版...",
                         color = Color.White,
-                        fontSize = 16.sp,
-                        modifier = Modifier.align(Alignment.Center)
+                        fontSize = 14.sp
                     )
                 }
-                pdfBitmaps != null -> {
-                    PdfPagesView(bitmaps = pdfBitmaps!!)
-                }
+            }
+            errorMessage != null -> {
+                Text(
+                    text = errorMessage ?: "加载失败",
+                    color = Color.White,
+                    fontSize = 16.sp
+                )
+            }
+            pdfBitmaps != null -> {
+                ZoomablePdfView(bitmaps = pdfBitmaps!!)
             }
         }
     }
 }
 
 @Composable
-fun PdfPagesView(bitmaps: List<Bitmap>) {
+fun ZoomablePdfView(bitmaps: List<Bitmap>) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
 
-    val boxSize = remember { mutableStateOf(Offset.Zero) }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .onSizeChanged { boxSize.value = Offset(it.width.toFloat(), it.height.toFloat()) }
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
@@ -208,12 +245,6 @@ fun PdfPagesView(bitmaps: List<Bitmap>) {
                             val newScale = (oldScale * zoom).coerceIn(1f, 5f)
 
                             if (centroid != Offset.Unspecified && newScale != oldScale) {
-                                // Anchor zoom on centroid:
-                                // The point under the centroid in content coords is:
-                                //   contentPt = (centroid - offset) / oldScale
-                                // After zoom, that point should still be at centroid:
-                                //   centroid = contentPt * newScale + newOffset
-                                //   newOffset = centroid - contentPt * newScale
                                 val contentX = (centroid.x - offsetX) / oldScale
                                 val contentY = (centroid.y - offsetY) / oldScale
                                 offsetX = centroid.x - contentX * newScale + pan.x
@@ -242,7 +273,6 @@ fun PdfPagesView(bitmaps: List<Bitmap>) {
                         }
                     } while (event.changes.any { it.pressed })
 
-                    // Reset to 1x if barely zoomed
                     if (scale < 1.1f) {
                         scale = 1f
                         offsetX = 0f
