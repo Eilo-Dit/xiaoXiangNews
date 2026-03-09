@@ -25,6 +25,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -69,10 +70,12 @@ fun PdfViewerScreen(
     initialPageIndex: Int,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val pagerState = rememberPagerState(
         initialPage = initialPageIndex,
         pageCount = { pages.size }
     )
+    var refreshTrigger by remember { mutableStateOf(0) }
 
     val currentEdition = if (pages.isNotEmpty()) {
         pages[pagerState.currentPage].edition
@@ -100,6 +103,20 @@ fun PdfViewerScreen(
                     )
                 }
             },
+            actions = {
+                IconButton(onClick = {
+                    if (pages.isNotEmpty()) {
+                        PdfCache.deleteCachedFile(context, pages[pagerState.currentPage].pdfUrl)
+                        refreshTrigger++
+                    }
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "刷新",
+                        tint = Color.White
+                    )
+                }
+            },
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = RedPrimary
             )
@@ -118,7 +135,8 @@ fun PdfViewerScreen(
                 key = { pages[it].pdfUrl }
             ) { pageIndex ->
                 SinglePdfPage(
-                    pdfUrl = pages[pageIndex].pdfUrl
+                    pdfUrl = pages[pageIndex].pdfUrl,
+                    refreshTrigger = refreshTrigger
                 )
             }
         }
@@ -142,17 +160,17 @@ fun PdfViewerScreen(
 }
 
 @Composable
-fun SinglePdfPage(pdfUrl: String) {
+fun SinglePdfPage(pdfUrl: String, refreshTrigger: Int) {
     val context = LocalContext.current
 
     // Initialize from memory cache synchronously (no loading flash)
-    val cachedBitmaps = remember(pdfUrl) { PdfCache.getCachedBitmaps(pdfUrl) }
-    var pdfBitmaps by remember(pdfUrl) { mutableStateOf(cachedBitmaps) }
-    var isLoading by remember(pdfUrl) { mutableStateOf(cachedBitmaps == null) }
-    var errorMessage by remember(pdfUrl) { mutableStateOf<String?>(null) }
+    val cachedBitmaps = remember(pdfUrl, refreshTrigger) { PdfCache.getCachedBitmaps(pdfUrl) }
+    var pdfBitmaps by remember(pdfUrl, refreshTrigger) { mutableStateOf(cachedBitmaps) }
+    var isLoading by remember(pdfUrl, refreshTrigger) { mutableStateOf(cachedBitmaps == null) }
+    var errorMessage by remember(pdfUrl, refreshTrigger) { mutableStateOf<String?>(null) }
 
     // Only download and render if not in memory cache
-    LaunchedEffect(pdfUrl) {
+    LaunchedEffect(pdfUrl, refreshTrigger) {
         if (pdfBitmaps != null) return@LaunchedEffect
 
         isLoading = true
@@ -160,14 +178,17 @@ fun SinglePdfPage(pdfUrl: String) {
         try {
             val bitmaps = withContext(Dispatchers.IO) {
                 val cacheFile = PdfCache.downloadAndCache(context, pdfUrl)
+                android.util.Log.d("PdfDebug", "PDF file path: ${cacheFile.absolutePath}")
+                android.util.Log.d("PdfDebug", "PDF file size: ${cacheFile.length()} bytes")
                 val fd = ParcelFileDescriptor.open(cacheFile, ParcelFileDescriptor.MODE_READ_ONLY)
                 val renderer = PdfRenderer(fd)
                 val result = mutableListOf<Bitmap>()
-                // Use screen density for appropriate render scale, cap at 2x
-                val density = context.resources.displayMetrics.density
-                val renderScale = density.coerceIn(1.5f, 2f)
+
+                val screenWidth = context.resources.displayMetrics.widthPixels
                 for (i in 0 until renderer.pageCount) {
                     val page = renderer.openPage(i)
+                    val renderScale = (screenWidth * 2.5f) / page.width
+                    android.util.Log.d("PdfDebug", "Page $i - Original: ${page.width}x${page.height}, Scale: $renderScale, Rendered: ${(page.width * renderScale).toInt()}x${(page.height * renderScale).toInt()}")
                     val bitmap = Bitmap.createBitmap(
                         (page.width * renderScale).toInt(),
                         (page.height * renderScale).toInt(),

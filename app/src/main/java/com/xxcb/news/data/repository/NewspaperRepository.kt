@@ -11,6 +11,10 @@ class NewspaperRepository {
         return try {
             val response = api.getNewspaper(date)
             if (response.stat == 1 && response.data != null) {
+                android.util.Log.d("ApiDebug", "API returned ${response.data.list.size} pages")
+                response.data.list.forEachIndexed { index, page ->
+                    android.util.Log.d("ApiDebug", "Page $index - pdfUrl: ${page.pdfUrl}")
+                }
                 Result.success(response.data.list)
             } else {
                 Result.failure(Exception(response.message ?: "获取报纸数据失败"))

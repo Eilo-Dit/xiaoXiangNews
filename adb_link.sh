@@ -6,8 +6,8 @@
 # 示例: ./adb_link.sh 5555
 
 set -euo pipefail
-IP="192.168.1.246"
-PORT_CONNECT="45039"   # 固定连接端口
+IP="192.168.3.19"
+PORT_CONNECT="46757"   # 固定连接端口
 # 如果以参数形式传入, 直接使用参数, 否则交互式读取
 if [[ $# -ge 1 ]]; then
   PORT_PAIR="$1"

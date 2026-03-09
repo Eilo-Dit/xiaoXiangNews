@@ -35,6 +35,14 @@ object PdfCache {
         bitmapCache.clear()
     }
 
+    fun deleteCachedFile(context: Context, url: String) {
+        val file = File(getCacheDir(context), urlToFileName(url))
+        if (file.exists()) {
+            file.delete()
+        }
+        bitmapCache.remove(url)
+    }
+
     private fun getCacheDir(context: Context): File {
         val dir = File(context.cacheDir, PDF_CACHE_DIR)
         if (!dir.exists()) dir.mkdirs()
